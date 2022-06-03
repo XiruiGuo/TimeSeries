@@ -1,0 +1,418 @@
+---
+title: "Time Series Project"
+author: "Xirui Guo"
+date: "5/7/2022"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(ggplot2)
+library(tidyverse)
+library(dplyr)
+library(lubridate)
+library(zoo)
+library(ggpubr)
+library(forecast)
+```
+
+
+```{r}
+WindSpeed_Month_Ave <- read.csv("WindSpeed_Month_Ave.csv")
+#head(WindSpeed_Month_Ave[,1:5])
+# dim(WindSpeed_Month_Ave)   # 480*918
+
+lat_lon_WindSpeed_Month_Ave <- read.csv("WS_month_lat_lon.csv")
+#head(lat_lon_WindSpeed_Month_Ave)
+#tail(lat_lon_WindSpeed_Month_Ave)
+# dim(lat_lon_WindSpeed_Month_Ave) # 511680*4
+
+lat_lon_key <- read.csv("lat_lon_index_key.csv")
+#head(lat_lon_key)
+# dim(lat_lon_key) # 916*3
+```
+```{r}
+# lat_lon_key[1,]
+site1 <- lat_lon_WindSpeed_Month_Ave[lat_lon_WindSpeed_Month_Ave$lat==27.5 & lat_lon_WindSpeed_Month_Ave$lon==250.0,]
+plot(site1$WS,type="o",main="Site1")
+plot(WindSpeed_Month_Ave$X1,type="o",main="X1")
+```
+
+
+# Exploratory Data Analysis
+```{r,fig.height=3,fig.width=10}
+set.seed(1)
+sample(seq(1,916,by=1),3,replace=F)
+```
+## Add two columns
+```{r}
+WindSpeed_Month_Ave <- WindSpeed_Month_Ave %>%
+  mutate(Date = as.Date(paste(1,month,year),format="%d %m %Y"))%>%
+  mutate(Index=1:480)
+```
+
+## The relationship among same month in different years
+```{r,fig.height=5,fig.width=10}
+data_month <- WindSpeed_Month_Ave %>%
+  filter(month == 1|month ==3|month ==6|month ==9|month ==12)
+
+e1 <- ggplot(data_month, aes(x=year, y=X129)) +
+  geom_point() +
+  geom_line(color = "grey50") +
+  facet_grid(month~.) +
+  geom_smooth(method = "loess", se = FALSE, lwd =1.5)+
+  labs(title="X129",y=" ")
+
+e2 <- ggplot(data_month, aes(x=year, y=X678)) +
+  geom_point() +
+  geom_line(color = "grey50") +
+  facet_grid(month~.) +
+  geom_smooth(method = "loess", se = FALSE, lwd =1.5)+
+  labs(title="X678",y=" ")
+
+e3 <- ggplot(data_month, aes(x=year, y=X836)) +
+  geom_point() +
+  geom_line(color = "grey50") +
+  facet_grid(month~.) +
+  geom_smooth(method = "loess", se = FALSE, lwd =1.5)+
+  labs(title="X836",y=" ")
+
+ggarrange(e1,e2,e3,ncol=3,nrow=1)
+```
+
+## The relationship among different months within one year
+```{r,fig.height=5,fig.width=10}
+
+year_list <- c(1:24,241:264,421:444)
+
+g1<-ggplot(WindSpeed_Month_Ave[year_list,], aes(x=month, y=X129)) +
+  geom_point() +
+  geom_line(color = "grey50") +
+  facet_grid(year~.) +
+  geom_smooth(method = "loess", se = FALSE, lwd =1.5)+
+  scale_x_continuous(breaks=seq(1, 12, 1))+
+  labs(title="X129",y=" ")
+
+g2<-ggplot(WindSpeed_Month_Ave[year_list,], aes(x=month, y=X679)) +
+  geom_point() +
+  geom_line(color = "grey50") +
+  facet_grid(year~.) +
+  geom_smooth(method = "loess", se = FALSE, lwd =1.5)+
+  scale_x_continuous(breaks=seq(1, 12, 1))+
+  labs(title="X679",y=" ")
+
+g3<-ggplot(WindSpeed_Month_Ave[year_list,], aes(x=month, y=X836)) +
+  geom_point() +
+  geom_line(color = "grey50") +
+  facet_grid(year~.) +
+  geom_smooth(method = "loess", se = FALSE, lwd =1.5)+
+  scale_x_continuous(breaks=seq(1, 12, 1))+
+  labs(title="X836",y=" ")
+
+ggarrange(g1,g2,g3,nrow=1,ncol=3)
+```
+
+```{r,fig.height=9,fig.width=8}
+# d_max <- WindSpeed_Month_Ave %>%
+#   filter(month==4)
+# 
+# d_min <- WindSpeed_Month_Ave %>%
+#   filter(month==8)
+# 
+# gg1<-ggplot(WindSpeed_Month_Ave[1:60,], aes(x=Date, y=X129)) +
+#   geom_point(color="grey55")+
+#   geom_line(color = "grey50")+
+#   geom_point(data=d_max[1:5,],aes(x=Date, y=X129),color="red")+
+#   geom_label(data=d_max[1:5,],aes(x=Date+50, y=X129+0.1,label=month))+
+#   geom_point(data=d_min[1:5,],aes(x=Date, y=X129),color="green")+
+#   geom_label(data=d_min[1:5,],aes(x=Date+50, y=X129-0.1,label=month))+
+#   ggtitle("1979-1983")
+# 
+# gg2<-ggplot(WindSpeed_Month_Ave[241:300,], aes(x=Date, y=X129)) +
+#   geom_point(color="grey55")+
+#   geom_line(color = "grey50")+
+#   geom_point(data=d_max[21:25,],aes(x=Date, y=X129),color="red")+
+#   geom_label(data=d_max[21:25,],aes(x=Date+50, y=X129+0.1,label=month))+
+#   geom_point(data=d_min[21:25,],aes(x=Date, y=X129),color="green")+
+#   geom_label(data=d_min[21:25,],aes(x=Date+50, y=X129-0.1,label=month))+
+#   ggtitle("1999-2003")
+# 
+# gg3<-ggplot(WindSpeed_Month_Ave[421:480,], aes(x=Date, y=X129)) +
+#   geom_point(color="grey55")+
+#   geom_line(color = "grey50")+
+#   geom_point(data=d_max[36:40,],aes(x=Date, y=X129), color="red")+
+#   geom_label(data=d_max[36:40,],aes(x=Date+50, y=X129+0.1,label=month))+
+#   geom_point(data=d_min[36:40,],aes(x=Date, y=X129),color="green")+
+#   geom_label(data=d_min[36:40,],aes(x=Date+50, y=X129-0.1,label=month))+
+#   ggtitle("2014-2018")
+# 
+# ggarrange(gg1,gg2,gg3,nrow=3,ncol=1)
+```
+
+# Data Trainning
+```{r,fig.height=3,fig.width=10}
+par(mfcol=c(1,3),mar = c(3, 3, 3, 3))
+a1<-acf(WindSpeed_Month_Ave$X129,main="X129")
+a2<-acf(WindSpeed_Month_Ave$X679, main="X679")
+a3<-acf(WindSpeed_Month_Ave$X836, main="X836")
+```
+
+
+##  De-seasonality
+```{r}
+desea <- function(k,plot=FALSE){
+  v<-c()
+  name <- colnames(WindSpeed_Month_Ave)[k]
+  value <- WindSpeed_Month_Ave[1:480,k]
+  Index <- WindSpeed_Month_Ave$Index[1:480]
+  for (i in seq(0,1,0.001)){
+    #I(Index^3)+Index+
+    m<-lm(value~I(sin(i*Index))+I(sin(2*i*Index))+I(cos(i*Index)))
+    v<-c(v,summary(m)$sigma)
+  }
+  
+  num <- (which(v==min(v))-1)*0.001
+  m<-lm(value~I(sin(num*Index))+I(sin(2*num*Index))+I(cos(num*Index)))
+  y<-residuals(m)
+  
+  if (plot==TRUE){
+    main_exp1 <- paste("acf coef_i: ",num, "variable: ", name)
+    main_exp2 <- paste("pacf coef_i: ",num, "variable: ", name)
+    graph1 <- acf(y,main=main_exp1)
+    graph2 <- pacf(y,main=main_exp2)
+    return(list(y,m,graph1,graph2))
+  }
+  
+  return(list(y,m))
+}
+```
+
+```{r,fig.height=6,fig.width=10}
+par(mfcol=c(2,3),mar = c(3, 3, 3, 3))
+desea(131,T)[[3]]
+desea(681,T)[[3]]
+desea(838,T)[[3]]
+desea(131,T)[[4]]
+desea(681,T)[[4]]
+desea(838,T)[[4]]
+```
+
+
+# Model Selection: 
+
+## ARMA(0,0) vs AR(1) vs auto.arima
+```{r}
+WindSpeed_Month_Ave1 <- read.csv("WindSpeed_Month_Ave.csv")
+
+model_selection <- function(k,plot=FALSE){
+  
+  
+  
+  y <- desea(k)[[1]]
+  order_1 <- c(1,0,0)
+  Arma_fit_1 <- Arima(y=y,order=order_1)
+  resids_1 <- Arma_fit_1$residuals
+  # plot(resids,type="o",main="ARMA Resids Best Order")
+  # acf(resids,main="ARMA Resids Best Order")
+  # order
+  # Arma_fit$aic
+  # forecast(Arma_fit,h=6)
+  
+  order_0 <- c(0,0,0)
+  Arma_fit_0 <- Arima(y=y,order=order_0)
+  resids_0 <- Arma_fit_0$residuals
+  
+  model2 <- auto.arima(y=WindSpeed_Month_Ave1[,k])
+  
+  order2 <- c(model2$arma[1],model2$arma[6],model2$arma[2])
+  seasonal2 <- c(model2$arma[3],model2$arma[7],model2$arma[4])
+  period2 <- model2$arma[5]
+  
+  Arma_fit2 <- Arima(y=WindSpeed_Month_Ave1[,k],order=order2,seasonal = list(order=seasonal2, period=period2))
+  
+  model_par2 <- data.frame("AR"=model2$arma[1],"MA"=model2$arma[2],"d"=model2$arma[6],
+                           "SAR"=model2$arma[3],"D"=model2$arma[7],"SMA"=model2$arma[4],
+                           "Period"= model2$arma[5]) 
+  
+  resids2 <- Arma_fit2$residuals
+  #plot(resids,type="o",main="ARMA Resids Best Order")
+  #acf(resids2,main="ARMA Resids Best Order")
+
+  res_col <- paste("ARIMA", model2$arma[1],model2$arma[6],model2$arma[2],
+                   model2$arma[3],model2$arma[7],model2$arma[4],model2$arma[5])
+  
+  df_result <- data.frame("ARMA(0,0,0)" =
+                         c(Arma_fit_0$aic,Arma_fit_0$aicc,Arma_fit_0$bic), 
+                         "ARMA(1,0,0)" =
+                         c(Arma_fit_1$aic,Arma_fit_1$aicc,Arma_fit_1$bic), 
+                       "unprocessed variable" =
+                         c(Arma_fit2$aic,Arma_fit2$aicc,Arma_fit2$bic),
+                       row.names = c("AIC","AICC","BIC"))
+  colnames(df_result) <- c("ARMA(0,0)","AR(1)",res_col)
+  
+  
+  
+  
+  min_aic = min(Arma_fit_0$aic,Arma_fit_1$aic,Arma_fit2$aic)
+  
+  if (plot==TRUE & min_aic==Arma_fit2$aic){
+    # same output as auto.arima$arma
+    main_exp1 <- paste("ARIMA:", model2$arma[1],model2$arma[6],model2$arma[2],
+                       model2$arma[3],model2$arma[7],model2$arma[4],model2$arma[5])
+    graph1 <- acf(resids2, main=main_exp1)
+    return(list(Arma_fit2,df_result,model_par2,graph1))
+  }
+  else if (plot==TRUE & min_aic==Arma_fit_1$aic){
+    main_exp2 <- paste("ARMA:", 1, 0, 0)
+    graph2 <- acf(resids_1,main = main_exp2)
+    return(list(Arma_fit_1,df_result,order_1,graph2))
+  }
+  else if (plot==TRUE & min_aic==Arma_fit_0$aic){
+    main_exp2 <- paste("ARMA:", 0, 0, 0)
+    graph2 <- acf(resids_0,main = main_exp2)
+    return(list(Arma_fit_0,df_result,order_0,graph2))
+  }
+  else if (plot==FALSE & min_aic==Arma_fit2$aic){
+    return(list(Arma_fit2,df_result,model_par2))
+  }
+  else if (plot==FALSE & min_aic==Arma_fit_1$aic){
+    return(list(Arma_fit_1,df_result,order_1))
+  }
+  else if (plot==FALSE & min_aic==Arma_fit_0$aic){
+    return(list(Arma_fit_0,df_result,order_0))
+  }
+  
+}
+
+```
+
+
+```{r}
+par(mar=c(3,3,3,3))
+model_selection(131,T)
+```
+
+
+
+
+```{r}
+par(mar=c(3,3,3,3))
+model_selection(681,T)
+```
+
+
+
+```{r}
+par(mar=c(3,3,3,3))
+model_selection(838,T)
+```
+
+
+```{r}
+# auto.arima(y=WindSpeed_Month_Ave1[,131])
+# auto.arima(y=WindSpeed_Month_Ave1[,681])
+# auto.arima(y=WindSpeed_Month_Ave1[,838])
+```
+
+
+# Conclusion
+
+```{r}
+prediction <- function(s=3,e=918){
+  result <- data.frame("Date"=as.Date(c("2019-01-01","2019-02-01","2019-03-01",
+                                        "2019-04-01","2019-05-01","2019-06-01")))
+ 
+  for(j in s:e){
+    model <- model_selection(j)[[1]]
+    
+    var_1 <- model_selection(j)[[3]][1]
+    
+    if (var_1 ==1){
+      n <- ncol(result)
+      fore_data <- predict(desea(j)[[2]],data.frame(Index=c(481:486)))+
+      data.frame(forecast(model,h=6))$Point.Forecast
+      result[,(n+1)]<- fore_data
+    } else{
+      n <- ncol(result)
+      fore_data <- predict(desea(j)[[2]],data.frame(Index=c(481:486)))
+      result[,(n+1)]<- fore_data
+    }
+    
+  }
+  colnames(result)[2:(e-s+2)] <-colnames(WindSpeed_Month_Ave)[s:e]
+  return(result)
+}
+```
+
+## Predicted Results
+```{r}
+p1<-prediction(131,131)
+p2<-prediction(681,681)
+p3<-prediction(838,838)
+
+m1<- merge(p1,p2,by="Date")
+merge(m1,p3,by="Date")
+
+```
+
+
+## The Graph of Predicted Results
+```{r}
+WindSpeed_Month_Ave2 <- WindSpeed_Month_Ave1 %>%
+  mutate(Date = as.Date(paste(1,month,year),format="%d %m %Y"))
+```
+
+
+```{r,fig.width=10,fig.height=8}
+# X129
+all_data <- rbind(WindSpeed_Month_Ave2[,c(919,131)],prediction(131,131))
+res1<-ggplot(all_data,aes(Date,X129)) +
+  geom_line()+
+  annotate("rect", xmin = as.Date("2019-01-01"), xmax = as.Date("2019-06-01"),
+           ymin = -Inf, ymax = Inf, fill = "blue",alpha = .2)+
+  annotate("text", x = as.Date("2015-09-01"), y = 6.5, label ="predict value",
+             color = "purple", hjust = 0)
+
+# X679
+all_data2 <- rbind(WindSpeed_Month_Ave2[,c(919,681)],prediction(681,681))
+res2<-ggplot(all_data2,aes(Date,X679)) +
+  geom_line()+
+  annotate("rect", xmin = as.Date("2019-01-01"), xmax = as.Date("2019-06-01"),
+           ymin = -Inf, ymax = Inf, fill = "blue",alpha = .2)+
+  annotate("text", x = as.Date("2015-09-01"), y = 7.5, label ="predict value",
+             color = "purple", hjust = 0)
+
+# X836
+all_data <- rbind(WindSpeed_Month_Ave2[,c(919,838)],prediction(838,838))
+res3<-ggplot(all_data,aes(Date,X836)) +
+  geom_line()+
+  annotate("rect", xmin = as.Date("2019-01-01"), xmax = as.Date("2019-06-01"),
+           ymin = -Inf, ymax = Inf, fill = "blue",alpha = .2)+
+  annotate("text", x = as.Date("2015-09-01"), y = 7, label ="predict value",
+             color = "purple", hjust = 0)
+
+ggarrange(res1,res2,res3,nrow=3,ncol=1)
+```
+
+
+```{r}
+# the prediction code for directly using auto.arima
+# prediction1 <- function(s=3,e=918,p,q){
+#   result <- data.frame("Date"=as.Date(c("2019-01-01","2019-02-01","2019-03-01",
+#                                         "2019-04-01","2019-05-01","2019-06-01")))
+#   for(j in s:e){
+#     model <- model_selection(p,q,j)[[1]]
+#     n <- ncol(result)
+#     result[,(n+1)]<- data.frame(forecast(model,h=6))$Point.Forecast
+#   }
+#   colnames(result)[2:(e-s+2)] <-colnames(WindSpeed_Month_Ave)[s:e]
+#   return(result)
+# }
+# prediction1(131,131,1,0)
+# plot(forecast(model_selection(1,0,131)[[1]],h=6))
+```
+
+
